@@ -93,6 +93,10 @@ export default function ChatBot(){
                     >
                         {msg.text}
                         { msg.image  && <img className="chatImage" src={msg.image + '.png'} alt="image"></img> }
+                        { msg.image  && <a className="px-4 py-2 rounded-xl bg-blue-600 text-white font-medium 
+                        hover:bg-blue-700 active:bg-blue-800 
+                        focus:outline-none focus:ring-2 focus:ring-blue-400 
+                        transition" href={msg.image + '.tif'} target="_blank">Download TIF file</a> }
                     </div>
                     ))}
                 </div>
