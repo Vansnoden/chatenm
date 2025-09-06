@@ -1,14 +1,16 @@
 "use client";
 import { useState } from "react";
 import { X } from "lucide-react";
+import { SEND_MSG_URL } from "@/app/lib/constants";
 
 export default function ChatBot(){
     const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
     const [input, setInput] = useState("");
     const [visible, setVisible] = useState(true);
+    const [thinking, setThinking] = useState(false);
 
 
-    const sendMessage = () => {
+    const sendMessage = async () => {
         if (!input.trim()) return;
 
         // Add user message
@@ -16,13 +18,34 @@ export default function ChatBot(){
         setMessages(newMessages);
         setInput("");
 
-        // Fake bot response (replace with API call)
-        setTimeout(() => {
-        setMessages((prev) => [
-            ...prev,
-            { role: "assistant", text: "This is a sample response 🤖" },
-        ]);
-        }, 600);
+        //  bot response 
+        try {
+            setThinking(true);
+            const response = await fetch(SEND_MSG_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                msg: input,
+                session_id: 0
+            }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const answer = await response.text();
+            
+            setMessages((prev) => [
+                ...prev,
+                { role: "assistant", text: answer, image: "/logo.png" },
+            ]);
+            setThinking(false);
+        } catch (error) {
+            console.error("Fetch error:", error);
+        }
     };
 
 
@@ -91,6 +114,7 @@ export default function ChatBot(){
                     Send
                     </button>
                 </div>
+                { thinking && (<span className="blink">Thinking ...</span>) }
             </div>
         </div>
     )

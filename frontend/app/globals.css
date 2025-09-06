@@ -48,3 +48,19 @@ body {
   top: 0;
   right: 0;
 }
+
+
+.blink {
+  display: inline-block;
+  animation: blink 1s steps(1, end) infinite;
+}
+
+@keyframes blink {
+  50% { visibility: hidden; } /* use visibility for better layout stability */
+  100% { visibility: visible; }
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .blink { animation: none; }
+}

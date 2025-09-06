@@ -2,6 +2,7 @@ import json
 import random
 import shutil
 from typing import Annotated
+import uuid
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -566,8 +567,10 @@ def run_suitability_model(temp_rast_path: str, output_path: str) -> str:
     plt.title("Normalized Epidemic Probability (λmax)")
     plt.colorbar(im, fraction=0.046, pad=0.04)
     plt.show()
+    unique_name = f"{uuid.uuid4().hex}.png"
+    plt.savefig(os.path.join("uploads", unique_name), dpi=300)
 
-    return output_path
+    return {"path": output_path, "file_name": unique_name}
 
 
 
@@ -598,7 +601,7 @@ def run_ecological_niche_model(
         resolution (str): Spatial resolution ("10m", "5m", "2.5m", "30s").
         study_area: List of countries names ['Cameroon', 'Kenya'] for instance
     Returns:
-        Path to the output
+        Path to the output, and Unique png name as a dictionnary
     """
 
     # -----------------------------
@@ -651,10 +654,10 @@ def run_ecological_niche_model(
     background_points = background_data[predictors]
 
     # print("### OCCURRENCE POINTS ###")
-    # print(occurrence_points)
+    print(occurrence_points)
 
     # print("### BACKGROUND POINTS ###")
-    # print(background_points)
+    print(background_points)
 
     X = pd.concat([occurrence_points, background_points], ignore_index=True)
     y = pd.Series([1] * len(occurrence_points) + [0] * len(background_points))
@@ -701,16 +704,16 @@ def run_ecological_niche_model(
         raster_data = src.read(1).astype(float)
         raster_data[raster_data == src.nodata] = np.nan  # mask NoData
 
-    plt.figure(figsize=(6, 6))
+    plt.figure(figsize=(8, 8))
     im = plt.imshow(raster_data, cmap="viridis")
     plt.colorbar(im, fraction=0.046, pad=0.04, label="Suitability")
     plt.title(f"Ecological Niche Model - {species_name}")
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")
-    plt.savefig(os.path.join(os.path.dirname(output_raster_path), 
-            f"{os.path.basename(output_raster_path).split('.')[0]}.png"), dpi=300)
+    unique_name = f"{uuid.uuid4().hex}.png"
+    plt.savefig(os.path.join("uploads", unique_name), dpi=300)
 
-    return output_raster_path
+    return {"path": output_raster_path, "file_name": unique_name}
 
 
 

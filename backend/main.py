@@ -4,6 +4,8 @@ import os
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from database import crud
 from database.database import SessionLocal
 from sqlalchemy.orm import Session
@@ -79,11 +81,17 @@ async def get_session(
         raise HTTPException(status_code=403, detail="Unauthorized action")
 
 
+class MessageRequest(BaseModel):
+    msg: str
+    session_id: int = 0
+
+
 @app.post("/user/send")
 async def send_message(
-    msg: str,
-    session_id: int = 0, 
+    req: MessageRequest ,
     db: Session = Depends(get_db)):
+    msg = req.msg
+    session_id = req.session_id
     if msg:
         if session_id:
             crud.create_chat_message(db, session_id, 'user', msg)
@@ -95,3 +103,11 @@ async def send_message(
         return response
     else:
         raise HTTPException(status_code=403, detail="Unauthorized action")
+    
+
+@app.get("/file/{filename}")
+async def get_file(filename: str):
+    file_path = f"uploads/{filename}"
+    if not os.path.exists(file_path):
+        return {"error": "File not found"}
+    return FileResponse(file_path, media_type="application/octet-stream", filename=filename)
