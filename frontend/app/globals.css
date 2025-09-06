@@ -64,3 +64,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .blink { animation: none; }
 }
+
+.chatImage{
+  border-radius: 15px;
+  height: 200px;
+  width: auto;
+}

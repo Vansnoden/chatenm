@@ -4,18 +4,19 @@ import { X } from "lucide-react";
 import { GET_IMAGE_URL, SEND_MSG_URL } from "@/app/lib/constants";
 
 export default function ChatBot(){
-    const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
+    const [messages, setMessages] = useState<{ role: string; text: string; image: string }[]>([]);
     const [input, setInput] = useState("");
     const [visible, setVisible] = useState(true);
     const [thinking, setThinking] = useState(false);
     const [imageUrl, setImageURL] = useState("");
+    const [tifUrl, setTifURL] = useState("");
 
 
     const sendMessage = async () => {
         if (!input.trim()) return;
 
         // Add user message
-        const newMessages = [...messages, { role: "user", text: input }];
+        const newMessages = [...messages, { role: "user", text: input, image: "" }];
         setMessages(newMessages);
         setInput("");
 
@@ -43,7 +44,8 @@ export default function ChatBot(){
                 ...prev,
                 { role: "assistant", text: answer.text, image: GET_IMAGE_URL + "/" + answer.image },
             ]);
-            setImageURL(GET_IMAGE_URL + "/" + answer.image);
+            setImageURL(GET_IMAGE_URL + "/" + answer.image + ".png" );
+            setTifURL(GET_IMAGE_URL + "/" + answer.image + ".tif" );
             setThinking(false);
         } catch (error) {
             console.error("Fetch error:", error);
@@ -90,6 +92,7 @@ export default function ChatBot(){
                         }`}
                     >
                         {msg.text}
+                        { msg.image  && <img className="chatImage" src={imageUrl} alt="image"></img> }
                     </div>
                     ))}
                 </div>
