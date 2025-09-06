@@ -188,6 +188,7 @@ def clip_rasters_to_study_area(
     ):
 
     KNOWN_MISSING_RASTER_CRS = None
+    shutil.rmtree(output_folder)
     os.makedirs(output_folder, exist_ok=True)
 
     # Load mask once and dissolve to a single (multi)polygon for speed/stability
@@ -561,14 +562,20 @@ def run_suitability_model(temp_rast_path: str, output_path: str) -> str:
     with rasterio.open(output_path, 'w', **profile) as dst:
         dst.write(lambda_norm_raster.astype(np.float32), 1)
 
+    height, width = lambda_norm_raster.shape
+    aspect = width / height
+    fig_height = 8  # base size
+    fig_width = fig_height * aspect
+
     # Plot
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=(fig_width, fig_height))
     im = plt.imshow(lambda_norm_raster, cmap="viridis", aspect="auto")
     plt.title("Normalized Epidemic Probability (λmax)")
     plt.colorbar(im, fraction=0.046, pad=0.04)
     plt.show()
     unique_name = f"{uuid.uuid4().hex}.png"
     plt.savefig(os.path.join("uploads", unique_name), dpi=300)
+    shutil.copy(output_path, f"uploads/{unique_name}.tif")
 
     return {"path": output_path, "file_name": unique_name}
 
@@ -581,10 +588,10 @@ def run_ecological_niche_model(
         occurrence_data_path: str,
         environmental_data_path: str,
         output_raster_path: str,
+        study_area: List[str] ,
         bio_predictors: List[int] = [1,2,3],
         elevation: bool = True,
-        resolution: str = "10m",
-        study_area: List[str] = []
+        resolution: str = "10m"
     ) -> str:
     """
     Trains a Maxent ecological niche model and applies it to environmental rasters
@@ -599,7 +606,7 @@ def run_ecological_niche_model(
         bio_predictors: List of Bioclim variable id to include, a number between 1 and 19.
         elevation: boolean to specify if we should include or not elevation in the modeling.
         resolution (str): Spatial resolution ("10m", "5m", "2.5m", "30s").
-        study_area: List of countries names
+        study_area: List of countries names if the format ['Uganda', 'Ethiopia']
     Returns:
         Path to the output, and Unique png name as a dictionnary
     """
@@ -704,16 +711,23 @@ def run_ecological_niche_model(
         raster_data = src.read(1).astype(float)
         raster_data[raster_data == src.nodata] = np.nan  # mask NoData
 
-    plt.figure(figsize=(8, 8))
+    height, width = raster_data.shape
+    aspect = width / height
+    fig_height = 8  # base size
+    fig_width = fig_height * aspect
+
+    # Plot
+    plt.figure(figsize=(fig_width, fig_height))
     im = plt.imshow(raster_data, cmap="viridis", aspect="auto")
     plt.colorbar(im, fraction=0.046, pad=0.04, label="Suitability")
     plt.title(f"Ecological Niche Model - {species_name}")
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")
-    unique_name = f"{uuid.uuid4().hex}.png"
+    unique_name = f"{uuid.uuid4().hex}"
     plt.savefig(os.path.join("uploads", unique_name), dpi=300)
+    shutil.copy(output_raster_path, f"uploads/{unique_name}.tif")
 
-    return {"path": output_raster_path, "file_name": unique_name}
+    return {"path": output_raster_path, "file_name": unique_name + ".png"}
 
 
 

@@ -67,7 +67,7 @@ export default function ChatBot(){
                             Download the Kenya shapefiles  <br/>
                             Download 100 records of Anopheles gambiae occurrences in Kenya from GBIF  <br/>
                             And run an ecological niche model using the downloaded elevation and occurrence data,  <br/>
-                            considering bioclimatic variables 1, 2, 3. <br/>
+                            considering bioclimatic variables 1 to 19. <br/>
                         </p>
                     </div>
                     <button onClick={() => setVisible(false)} 
