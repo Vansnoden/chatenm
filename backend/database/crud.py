@@ -15,91 +15,60 @@ from passlib.context import CryptContext
 from pathlib import Path
 import logging, traceback
 
+
 logger = logging.getLogger('uvicorn.error')
 logger.setLevel(logging.DEBUG)
 
 
-
-DELIMITER = ","
-
-
-def get_user(db: Session, user_id: int):
-    return db.query(models.User).filter(models.User.id == user_id).first()
+def get_chat_sessions(db: Session):
+    return db.query(models.ChatSession).all()
 
 
-def get_user_by_email(db: Session, email: str):
-    return db.query(models.User).filter(models.User.email == email).first()
-
-def get_user_by_username(db: Session, username: str):
-    return db.query(models.User).filter(models.User.username == username).first()
+def get_chat_session(db: Session, chat_session_id: int):
+    return db.query(models.ChatSession)\
+        .filter(models.ChatSession.id == chat_session_id).first()
 
 
-def get_users(db: Session, skip: int = 0, limit: int = 0):
-    if skip and limit:
-        return db.query(models.User).offset(skip).limit(limit).all()
-    else:
-        return db.query(models.User).all()
+def get_chat_session_messages(db: Session, chat_session_id: int):
+    return db.query(models.ChatMessage)\
+        .filter(models.ChatMessage.session_id == chat_session_id).all()
 
 
-def create_user(db: Session, user: schemas.UserCreate):
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    db_user = models.User(
-        username=user.username,
-        email=user.email, 
-        fullname=user.fullname,
-        is_active=True,
-        hashed_password=pwd_context.hash(user.password))
-    db.add(db_user)
+def create_chat_session(db: Session):
+    db_chat_session = models.ChatSession()
+    db.add(db_chat_session)
     db.commit()
-    db.refresh(db_user)
-    return db_user
+    db.refresh(db_chat_session)
+    return db_chat_session
 
 
-def delete_user(db: Session, user_id: int):
-    res = db.query(models.User).filter(models.User.id == user_id).delete()
+def delete_chat_session(db: Session, chat_session_id: int):
+    res = db.query(models.ChatSession)\
+        .filter(models.ChatSession.id == chat_session_id).delete()
     db.commit()
     return res
 
 
-def create_user_role(db: Session, role: schemas.UserRoleBase):
-    db_role = models.UserRole(
-        name=role.name
+def create_chat_message(db: Session, chat_session_id: int, sender_type: str, msg: str):
+    db_chat_msg = models.ChatMessage(
+        session_id = chat_session_id,
+        sender_type =  sender_type,
+        content = msg
     )
-    db.add(db_role)
+    db.add(db_chat_msg)
     db.commit()
-    db.refresh(db_role)
-    return db_role
-
-def get_user_role_by_name(db: Session, name: str):
-    return db.query(models.UserRole).filter(models.UserRole.name == name).first()
+    db.refresh(db_chat_msg)
+    return db_chat_msg
 
 
-def get_system_roles(db: Session, skip: int = 0, limit: int = 0):
-    if skip and limit:
-        return db.query(models.UserRole).offset(skip).limit(limit).all()
-    else:
-        return db.query(models.UserRole).all()
-    
-
-def assign_user_role(db: Session, user_id: int, role_id: int):
-    db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    db_role = db.query(models.UserRole).filter(models.UserRole.id == role_id).first()
-    if db_role and db_user:
-        db_user.role_id = role_id
-        db.commit()
-    return db_user
-
-
-def delete_user_role(db: Session, role_id: int):
-    res = db.query(models.UserRole).filter(models.UserRole.id == role_id).delete()
+def delete_chat_message(db: Session, msg_id: int):
+    res = db.query(models.ChatMessage)\
+        .filter(models.ChatMessage.id == msg_id).delete()
     db.commit()
     return res
 
 
-
-def ask_question_to_llm(db: Session,  user_id: int, msg:str):
-    db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if msg and db_user:
-        # do something here
-        db.commit()
-    return db_user
+def ask_question_to_llm(db: Session,  session_id: int, msg:str):
+    answer = "bot answer"
+    create_chat_message(db, session_id, 'bot', answer)
+    return answer

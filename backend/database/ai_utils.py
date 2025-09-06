@@ -39,6 +39,9 @@ import geopandas as gpd
 import numpy as np
 from shapely.geometry import Point
 from typing import Dict, Any, Optional
+from dotenv import load_dotenv
+
+load_dotenv() 
 
 
 # wordclim base url:
@@ -49,9 +52,8 @@ GBIF_API = "https://api.gbif.org/v1"
 
 
 
-os.environ["TAVILY_API_KEY"] = "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"
-# if not os.environ.get("GOOGLE_API_KEY"):
-os.environ["GOOGLE_API_KEY"] = "AIzaSyBzXg4gNzQ8Zhe-9A04qAUwIOUtroCsGpg" #getpass.getpass("GEMINI API KEY:\n")
+os.environ["TAVILY_API_KEY"] = os.getenv("TAVILY_API_KEY")
+os.environ["GOOGLE_API_KEY"] = os.getenv("TAVILY_API_KEY")
 
 
 llm = init_chat_model("google_genai:gemini-2.0-flash")
