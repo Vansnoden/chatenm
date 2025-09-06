@@ -1,0 +1,3 @@
+# llm integration
+# AIzaSyBzXg4gNzQ8Zhe-9A04qAUwIOUtroCsGpg;AIzaSyB-MfYlVehRz3K_sWdOrHvqcfdT5IZB_fg;AIzaSyCnRVW7yTvM9OwitClspG1EBES9ea1Jdf0
+os.environ["GOOGLE_API_KEY"] = "AIzaSyB-MfYlVehRz3K_sWdOrHvqcfdT5IZB_fg"

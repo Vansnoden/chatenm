@@ -1,0 +1,66 @@
+
+services:
+
+  postgres_db:
+    image: postgis/postgis:latest
+    container_name: postgres_db
+    restart: always
+    ports:
+      - "3001:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=chatenm_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+
+  backend:
+    build: ./backend
+    depends_on:
+      - postgres_db
+      - geoserver
+    container_name: backend
+    volumes:
+      - ./backend:/code
+      # - ./backend/database/utilities/ai_model:/code/database/utilities/ai_model
+      # - ./backend/alembic:/code/alembic
+      # - ./backend/alembic.ini:/code/alembic.ini
+    ports:
+      - 8000:8000
+    environment:
+      - GEOSERVER_URL=http://geoserver:8080/geoserver
+      - GEOSERVER_USERNAME=admin
+      - GEOSERVER_PASSWORD=geoserver
+      - POSTGRES_URL=jdbc:postgresql://postgres_db:5432/chatenm_db
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=admin
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 1000M
+        reservations:
+          cpus: '0.5'
+          memory: 1000M
+
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: ./Dockerfile.prod
+    depends_on:
+      - backend
+    container_name: frontend
+    ports:
+      - 3000:3000
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 1000M
+        reservations:
+          cpus: '0.5'
+          memory: 1000M
+
+volumes:
+  postgres-data:

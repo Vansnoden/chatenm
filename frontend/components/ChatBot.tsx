@@ -1,0 +1,97 @@
+"use client";
+import { useState } from "react";
+import { X } from "lucide-react";
+
+export default function ChatBot(){
+    const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
+    const [input, setInput] = useState("");
+    const [visible, setVisible] = useState(true);
+
+
+    const sendMessage = () => {
+        if (!input.trim()) return;
+
+        // Add user message
+        const newMessages = [...messages, { role: "user", text: input }];
+        setMessages(newMessages);
+        setInput("");
+
+        // Fake bot response (replace with API call)
+        setTimeout(() => {
+        setMessages((prev) => [
+            ...prev,
+            { role: "assistant", text: "This is a sample response 🤖" },
+        ]);
+        }, 600);
+    };
+
+
+    return(
+        <div className="">
+            { visible && (
+                <div className="infoAlert flex items-center 
+                    justify-between p-4 mb-4 rounded-xl bg-blue-50 border
+                    border-blue-200 text-blue-700 shadow-sm">
+                    <div className="text-sm">
+                        <b className="">
+                            This is an Example of input, you can use it as base and customize it to your needs.
+                        </b> <br/><br/>
+                        <p>
+                            Download bioclim from worldclim with 10m resolution <br/>
+                            Download Elevation data with 10m resolution <br/>
+                            Download the Ethiopia shapefiles <br/>
+                            Download 300 records of Apis mellifera occurrences in Ethiopia from GBIF <br/>
+                            And run an ecological niche model using the downloaded elevation and occurrence data, <br/>
+                            considering bioclimatic variables 1, 6 and 8.<br/>
+                        </p>
+                    </div>
+                    <button onClick={() => setVisible(false)} 
+                        className="ml-2 text-blue-600 hover:text-blue-800 focus:outline-none">
+                        <X size={18} />
+                    </button>
+                </div>
+            )}
+            
+            <div className="chatbotCtn flex flex-col mx-auto shadow-lg">
+                {/* Messages */}
+                <div className="flex-1 p-4 overflow-y-auto space-y-3">
+                    {messages.map((msg, i) => (
+                    <div
+                        key={i}
+                        className={`p-3 rounded-xl max-w-[55%] ${
+                        msg.role === "user"
+                            ? "ml-auto bg-blue-300 text-gray-900"
+                            : "mr-auto bg-gray-200 text-gray-900"
+                        }`}
+                    >
+                        {msg.text}
+                    </div>
+                    ))}
+                </div>
+
+                {/* Input */}
+                <div className="border-t border-gray-200 p-3 flex gap-2">
+                    <input
+                        type="text"
+                        placeholder="Type your message..."
+                        className="flex-1 px-4 py-2 rounded-xl border border-gray-300 
+                        focus:outline-none focus:ring-2 focus:ring-blue-500 
+                        shadow-sm"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                    />
+                    <button
+                        onClick={sendMessage}
+                        className="px-4 py-2 rounded-xl bg-blue-600 text-white font-medium 
+                        hover:bg-blue-700 active:bg-blue-800 
+                        focus:outline-none focus:ring-2 focus:ring-blue-400 
+                        transition"
+                    >
+                    Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
