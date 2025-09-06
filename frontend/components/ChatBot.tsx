@@ -120,7 +120,7 @@ export default function ChatBot(){
                     </button>
                 </div>
                 { thinking && (<span className="blink">Thinking ...</span>) }
-                <span className="text-green-900 blink">{imageUrl}</span>
+                {/* <span className="text-green-900 blink">{imageUrl}</span> */}
             </div>
         </div>
     )

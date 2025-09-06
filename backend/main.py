@@ -57,7 +57,6 @@ app.add_middleware(
 
 MSG_TEMPLATE = """
     For the following instructions, use tools outputs to get full file paths
-    especially for .tif and .png;
     save the worldclim data in ./data/environmental
     save elevation data in ./data/environmental
     save GBIF data in ./data/gbif_data/
@@ -108,6 +107,17 @@ def extract_filenames(message: str) -> Dict[str, Optional[str]]:
     }
 
 
+def get_latest_file(folder_path: str) -> str:
+    """Return the path to the most recently created/modified file in a folder."""
+    files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) 
+             if os.path.isfile(os.path.join(folder_path, f))]
+    if not files:
+        raise FileNotFoundError(f"No files found in {folder_path}")
+    
+    latest_file = max(files, key=os.path.getctime)  # or os.path.getmtime for "last modified"
+    return latest_file
+
+
 @app.post("/user/send")
 async def send_message(
     req: MessageRequest ,
@@ -122,17 +132,14 @@ async def send_message(
             new_session = crud.create_chat_session(db)
             crud.create_chat_message(db, new_session.id, 'user', msg)
             response = crud.ask_question_to_llm(db, new_session.id, MSG_TEMPLATE.format(prompt = msg))
-            print("###RESPONSE\n")
-            print(response)
-            fname = extract_filenames(response)
-            print("###FNAME")
+            # fname = extract_filenames(response)
+            # ffname = str(fname['png'].split(".")[-2]) if fname['png'] else ""
+            print("LATEST FILE NAME:")
+            fname = get_latest_file("uploads").split(".tif")[0].split("/")[-1]
             print(fname)
-            print("## FINAL IMAGE")
-            ffname = str(fname['png'].split(".")[-2]) if fname['png'] else ""
-            print(ffname)
         return { 
             "text": response,
-            "image": ffname
+            "image": fname
         }
     else:
         raise HTTPException(status_code=403, detail="Unauthorized action")
