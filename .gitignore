@@ -4,6 +4,7 @@ backend/data/
 !backend/data/readme.md
 backend/uploads/
 backend/uploads/readme.md
+backend/.env
 **/venv/
 venv/
 geo_settings/
