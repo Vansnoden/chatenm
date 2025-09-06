@@ -1,5 +1,7 @@
 **/__pycache__
 backend/venv/
+backend/data/
+!backend/data/readme.md
 **/venv/
 venv/
 geo_settings/

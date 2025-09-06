@@ -51,6 +51,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+MSG_TEMPLATE = """
+    For the following instructions, use tools outputs to get full file paths
+    save the worldclim data in ./data/environmental
+    save elevation data in ./data/environmental
+    save GBIF data in ./data/gbif_data/
+    save final results in ./data/outputs
+
+    {prompt}
+
+"""
 
 @app.post("/sessions")
 async def get_sessions(db: Session = Depends(get_db)):
@@ -77,11 +87,11 @@ async def send_message(
     if msg:
         if session_id:
             crud.create_chat_message(db, session_id, 'user', msg)
-            response = crud.ask_question_to_llm(db, session_id, msg)
+            response = crud.ask_question_to_llm(db, session_id, MSG_TEMPLATE.format(prompt = msg))
         else:
             new_session = crud.create_chat_session(db)
             crud.create_chat_message(db, new_session.id, 'user', msg)
-            response = crud.ask_question_to_llm(db, new_session.id, msg)
+            response = crud.ask_question_to_llm(db, new_session.id, MSG_TEMPLATE.format(prompt = msg))
         return response
     else:
         raise HTTPException(status_code=403, detail="Unauthorized action")

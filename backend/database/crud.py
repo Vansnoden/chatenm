@@ -9,6 +9,7 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from tqdm import tqdm
 
+from database.ai_utils import ask_question
 from database.utils import get_uuid
 from . import models, schemas
 from passlib.context import CryptContext
@@ -71,4 +72,5 @@ def delete_chat_message(db: Session, msg_id: int):
 def ask_question_to_llm(db: Session,  session_id: int, msg:str):
     answer = "bot answer"
     create_chat_message(db, session_id, 'bot', answer)
+    answer = ask_question(question=msg)
     return answer

@@ -1,3 +1,6 @@
+import json
+import random
+import shutil
 from typing import Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
@@ -51,9 +54,12 @@ GBIF_OCCURRENCE_URL = "https://api.gbif.org/v1/occurrence/search"
 GBIF_API = "https://api.gbif.org/v1"
 
 
-
+# important environment variables
 os.environ["TAVILY_API_KEY"] = os.getenv("TAVILY_API_KEY")
-os.environ["GOOGLE_API_KEY"] = os.getenv("TAVILY_API_KEY")
+google_api_keys_base = os.environ["GOOGLE_API_KEY"]
+google_api_keys = [item.strip() for item in google_api_keys_base.split(';')]
+os.environ["GOOGLE_API_KEY"] = random.choice(google_api_keys)
+
 
 
 llm = init_chat_model("google_genai:gemini-2.0-flash")
@@ -683,6 +689,8 @@ def run_ecological_niche_model(
     # Apply model to rasters
     # -----------------------------
     rasters = [os.path.join(clipped_data_folder, f"wc2.1_{p}.tif") for p in predictors]
+    if os.path.exists(os.path.dirname(output_raster_path)) and os.path.isdir(os.path.dirname(output_raster_path)):
+        shutil.rmtree(os.path.dirname(output_raster_path))
     os.makedirs(os.path.dirname(output_raster_path), exist_ok=True)
     ela.apply_model_to_rasters(maxent_model, rasters, output_raster_path)
 
@@ -693,13 +701,14 @@ def run_ecological_niche_model(
         raster_data = src.read(1).astype(float)
         raster_data[raster_data == src.nodata] = np.nan  # mask NoData
 
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(6, 6))
     im = plt.imshow(raster_data, cmap="viridis")
     plt.colorbar(im, fraction=0.046, pad=0.04, label="Suitability")
     plt.title(f"Ecological Niche Model - {species_name}")
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")
-    plt.show()
+    plt.savefig(os.path.join(os.path.dirname(output_raster_path), 
+            f"{os.path.basename(output_raster_path).split('.')[0]}.png"), dpi=300)
 
     return output_raster_path
 
@@ -715,12 +724,12 @@ class State(TypedDict):
 graph_builder = StateGraph(State)
 
 # utilities
-def display_graph(graph: StateGraph):
-    try:
-        display(Image(graph.get_graph().draw_mermaid_png()))
-    except Exception:
-        # This requires some extra dependencies and is optional
-        pass
+# def display_graph(graph: StateGraph):
+#     try:
+#         display(Image(graph.get_graph().draw_mermaid_png()))
+#     except Exception:
+#         # This requires some extra dependencies and is optional
+#         pass
 
 # tools
 websearch_tool = TavilySearch(max_results=2)
@@ -818,8 +827,11 @@ graph_builder.add_edge(START, "chatbot")
 # graph_builder.add_edge("wordclim_agent", END)
 graph_builder.add_edge("chatbot", END)
 graph = graph_builder.compile(checkpointer=memory)
-display_graph(graph)
+# display_graph(graph)
 
+
+def format_message(msg):
+    return f"{msg.type.capitalize()}: {msg.content}"
 
 
 def ask_question(question: str, config: dict = {"configurable": {"thread_id": "1"}}):
@@ -828,21 +840,37 @@ def ask_question(question: str, config: dict = {"configurable": {"thread_id": "1
         config,
         stream_mode="values",
     )
-    for event in events:
-        event["messages"][-1].pretty_print()
+    ans = "\n".join(
+        f"{e['messages'][-1].content}"
+        for e in events
+        if e["messages"][-1].type == "ai"
+    )
+    # for event in events:
+    #     msg = event["messages"][-1]  # last message
+    #     role = msg.get("role", "unknown").capitalize()
+    #     content = msg.get("content", "")
+    #     ans += f"\n{role}: {content}"
+    #     # ans += "\n" + str(event["messages"][-1]) #.pretty_print()
+    return ans
 
 
 
 if __name__ == "__main__":
     q1 = """
         For the following instructions, use tools outputs to get full file paths
-        Download bioclim from worldclim with 10m resolution and save in ./data/environmental
-        Download Elevation data with 10m resolution and save in ./data/environmental
-        Download the Ethiopia shapefiles and save in ./data/shapefiles/
-        Download 300 records of Apis mellifera occurrences in Ethiopia from GBIF and save in ./data/gbif_data/
-        And run an ecological niche model using the downloaded occurrence data, bioclimatic 1, 6 and 8 with elevation data in ethiopia
+        save the worldclim data in ./data/environmental
+        save elevation data in ./data/environmental
+        save GBIF data in ./data/gbif_data/
+        save final results in ./data/outputs
 
-        Save results in /home/void/Documents/research/climate_modeling/data/outputs"""
+        Download bioclim from worldclim with 10m resolution
+        Download Elevation data with 10m resolution
+        Download the Kenya shapefiles
+        Download 100 records of Anopheles gambiae occurrences in Kenya from GBIF
+        And run an ecological niche model using the downloaded elevation and occurrence data,
+        considering bioclimatic variables 1 to 5.
+
+        """
 
     user_input = q1
     ask_question(user_input)
