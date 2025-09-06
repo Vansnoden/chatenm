@@ -6,7 +6,7 @@ services:
     container_name: postgres_db
     restart: always
     ports:
-      - "3001:5432"
+      - "3004:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=admin
@@ -26,7 +26,7 @@ services:
       # - ./backend/alembic:/code/alembic
       # - ./backend/alembic.ini:/code/alembic.ini
     ports:
-      - 8000:8000
+      - 3005:8000
     environment:
       - GEOSERVER_URL=http://geoserver:8080/geoserver
       - GEOSERVER_USERNAME=admin
@@ -51,7 +51,7 @@ services:
       - backend
     container_name: frontend
     ports:
-      - 3000:3000
+      - 3006:3000
     deploy:
       resources:
         limits:
