@@ -15,11 +15,11 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
 
-  backend:
+  chatenm_backend:
     build: ./backend
     depends_on:
       - chatenm_db
-    container_name: backend
+    container_name: chatenm_backend
     volumes:
       - ./backend:/code
       # - ./backend/database/utilities/ai_model:/code/database/utilities/ai_model
@@ -43,13 +43,13 @@ services:
           cpus: '0.5'
           memory: 1000M
 
-  frontend:
+  chatenm_frontend:
     build: 
       context: ./frontend
       dockerfile: ./Dockerfile
     depends_on:
-      - backend
-    container_name: frontend
+      - chatenm_backend
+    container_name: chatenm_frontend
     ports:
       - 3006:3000
     deploy:
