@@ -19,7 +19,6 @@ services:
     build: ./backend
     depends_on:
       - postgres_db
-      - geoserver
     container_name: backend
     volumes:
       - ./backend:/code
@@ -47,7 +46,7 @@ services:
   frontend:
     build: 
       context: ./frontend
-      dockerfile: ./Dockerfile.prod
+      dockerfile: ./Dockerfile
     depends_on:
       - backend
     container_name: frontend

@@ -25,7 +25,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 3600 * 24
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 ITEMS_PER_PAGE = 100
 
-app = FastAPI()
+app = FastAPI(root_path="/api")
 
 # Dependency
 def get_db():
@@ -36,6 +36,8 @@ def get_db():
         db.close()
 
 origins = [
+    "https://chatenm.voidmonad.com",
+    "https://chatenm.voidmonad.com/api",
     "http://localhost.tiangolo.com",
     "https://localhost.tiangolo.com",
     "http://localhost",
