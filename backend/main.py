@@ -127,9 +127,12 @@ async def send_message(
             fname = extract_filenames(response)
             print("###FNAME")
             print(fname)
+            print("## FINAL IMAGE")
+            ffname = str(fname['png'].split(".")[-2]) if fname['png'] else ""
+            print(ffname)
         return { 
             "text": response,
-            "image": str(fname['png'].split(".")[0]) if fname['png'] else ""
+            "image": ffname
         }
     else:
         raise HTTPException(status_code=403, detail="Unauthorized action")

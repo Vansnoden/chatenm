@@ -92,7 +92,7 @@ export default function ChatBot(){
                         }`}
                     >
                         {msg.text}
-                        { msg.image  && <img className="chatImage" src={imageUrl} alt="image"></img> }
+                        { msg.image  && <img className="chatImage" src={msg.image + '.png'} alt="image"></img> }
                     </div>
                     ))}
                 </div>
