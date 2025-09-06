@@ -1,9 +1,9 @@
 
 services:
 
-  postgres_db:
+  chatenm_db:
     image: postgis/postgis:latest
-    container_name: postgres_db
+    container_name: chatenm_db
     restart: always
     ports:
       - "3004:5432"
@@ -18,7 +18,7 @@ services:
   backend:
     build: ./backend
     depends_on:
-      - postgres_db
+      - chatenm_db
     container_name: backend
     volumes:
       - ./backend:/code
@@ -31,7 +31,7 @@ services:
       - GEOSERVER_URL=http://geoserver:8080/geoserver
       - GEOSERVER_USERNAME=admin
       - GEOSERVER_PASSWORD=geoserver
-      - POSTGRES_URL=jdbc:postgresql://postgres_db:5432/chatenm_db
+      - POSTGRES_URL=jdbc:postgresql://chatenm_db:5432/chatenm_db
       - POSTGRES_USERNAME=postgres
       - POSTGRES_PASSWORD=admin
     deploy:
