@@ -1,13 +1,14 @@
 "use client";
 import { useState } from "react";
 import { X } from "lucide-react";
-import { SEND_MSG_URL } from "@/app/lib/constants";
+import { GET_IMAGE_URL, SEND_MSG_URL } from "@/app/lib/constants";
 
 export default function ChatBot(){
     const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
     const [input, setInput] = useState("");
     const [visible, setVisible] = useState(true);
     const [thinking, setThinking] = useState(false);
+    const [imageUrl, setImageURL] = useState("");
 
 
     const sendMessage = async () => {
@@ -36,12 +37,13 @@ export default function ChatBot(){
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            const answer = await response.text();
+            const answer = await response.json();
             
             setMessages((prev) => [
                 ...prev,
-                { role: "assistant", text: answer, image: "/logo.png" },
+                { role: "assistant", text: answer.text, image: GET_IMAGE_URL + "/" + answer.image },
             ]);
+            setImageURL(GET_IMAGE_URL + "/" + answer.image);
             setThinking(false);
         } catch (error) {
             console.error("Fetch error:", error);
@@ -60,12 +62,12 @@ export default function ChatBot(){
                             This is an Example of input, you can use it as base and customize it to your needs.
                         </b> <br/><br/>
                         <p>
-                            Download bioclim from worldclim with 10m resolution <br/>
-                            Download Elevation data with 10m resolution <br/>
-                            Download the Ethiopia shapefiles <br/>
-                            Download 300 records of Apis mellifera occurrences in Ethiopia from GBIF <br/>
-                            And run an ecological niche model using the downloaded elevation and occurrence data, <br/>
-                            considering bioclimatic variables 1, 6 and 8.<br/>
+                            Download bioclim from worldclim with 10m resolution  <br/>
+                            Download Elevation data with 10m resolution  <br/>
+                            Download the Kenya shapefiles  <br/>
+                            Download 100 records of Anopheles gambiae occurrences in Kenya from GBIF  <br/>
+                            And run an ecological niche model using the downloaded elevation and occurrence data,  <br/>
+                            considering bioclimatic variables 1, 2, 3. <br/>
                         </p>
                     </div>
                     <button onClick={() => setVisible(false)} 
@@ -115,6 +117,7 @@ export default function ChatBot(){
                     </button>
                 </div>
                 { thinking && (<span className="blink">Thinking ...</span>) }
+                <span className="text-green-900 blink">{imageUrl}</span>
             </div>
         </div>
     )

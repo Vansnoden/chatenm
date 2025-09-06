@@ -324,14 +324,14 @@ def get_taxon_key(species_name: str) -> int:
 def define_study_area(countries: List[str], output_path:str = "./data/study_area.geojson"):
     world_shp = gpd.read_file('world-administrative-boundaries.geojson')
     study_area_shp = world_shp[world_shp['name'].isin(countries)]
-    print(study_area_shp)
-    print(study_area_shp.is_empty.sum(), "empty geometries")
+    # print(study_area_shp)
+    # print(study_area_shp.is_empty.sum(), "empty geometries")
     if study_area_shp.crs is None:
         study_area_shp = study_area_shp.set_crs("EPSG:4326")
     study_area_shp = study_area_shp[~study_area_shp.geometry.is_empty]
     # Save to GeoJSON
     study_area_shp.to_file(output_path, driver="GeoJSON")
-    study_area_shp.plot()
+    # study_area_shp.plot()
     return output_path
 
 
@@ -400,7 +400,7 @@ def download_gbif_occurrences(
 
     Args:
         species: Scientific name of the species (e.g., "Papio anubis").
-        country: Optional 2-letter ISO country code (e.g., "KE" for Kenya). If None, fetch global data.
+        country: Optional 2-letter ISO country code .
         limit: Number of presence records to fetch (max 300,000 via paging).
         n_absences: Number of pseudo-absence/background points to generate. 
                     If None, defaults to same as presence count.
@@ -562,8 +562,8 @@ def run_suitability_model(temp_rast_path: str, output_path: str) -> str:
         dst.write(lambda_norm_raster.astype(np.float32), 1)
 
     # Plot
-    plt.figure(figsize=(8, 6))
-    im = plt.imshow(lambda_norm_raster, cmap="viridis")
+    plt.figure(figsize=(8, 8))
+    im = plt.imshow(lambda_norm_raster, cmap="viridis", aspect="auto")
     plt.title("Normalized Epidemic Probability (λmax)")
     plt.colorbar(im, fraction=0.046, pad=0.04)
     plt.show()
@@ -584,7 +584,7 @@ def run_ecological_niche_model(
         bio_predictors: List[int] = [1,2,3],
         elevation: bool = True,
         resolution: str = "10m",
-        study_area: List[str] = ['Kenya']
+        study_area: List[str] = []
     ) -> str:
     """
     Trains a Maxent ecological niche model and applies it to environmental rasters
@@ -599,7 +599,7 @@ def run_ecological_niche_model(
         bio_predictors: List of Bioclim variable id to include, a number between 1 and 19.
         elevation: boolean to specify if we should include or not elevation in the modeling.
         resolution (str): Spatial resolution ("10m", "5m", "2.5m", "30s").
-        study_area: List of countries names ['Cameroon', 'Kenya'] for instance
+        study_area: List of countries names
     Returns:
         Path to the output, and Unique png name as a dictionnary
     """
@@ -705,7 +705,7 @@ def run_ecological_niche_model(
         raster_data[raster_data == src.nodata] = np.nan  # mask NoData
 
     plt.figure(figsize=(8, 8))
-    im = plt.imshow(raster_data, cmap="viridis")
+    im = plt.imshow(raster_data, cmap="viridis", aspect="auto")
     plt.colorbar(im, fraction=0.046, pad=0.04, label="Suitability")
     plt.title(f"Ecological Niche Model - {species_name}")
     plt.xlabel("Longitude")

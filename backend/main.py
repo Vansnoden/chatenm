@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import os
+import re
+from typing import Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -86,6 +88,25 @@ class MessageRequest(BaseModel):
     session_id: int = 0
 
 
+def extract_filenames(message: str) -> Dict[str, Optional[str]]:
+    """
+    Extracts .tif and .png filenames from a given message string.
+
+    Args:
+        message (str): Input text containing file paths or filenames.
+
+    Returns:
+        dict: Dictionary with keys 'tif' and 'png'. Values are filenames or None if not found.
+    """
+    # tif_match = re.search(r"[\w./-]+\.tif", message)
+    png_match = re.search(r"[\w./-]+\.png", message)
+
+    return {
+        # "tif": tif_match.group(0) if tif_match else None,
+        "png": png_match.group(0) if png_match else None,
+    }
+
+
 @app.post("/user/send")
 async def send_message(
     req: MessageRequest ,
@@ -100,7 +121,11 @@ async def send_message(
             new_session = crud.create_chat_session(db)
             crud.create_chat_message(db, new_session.id, 'user', msg)
             response = crud.ask_question_to_llm(db, new_session.id, MSG_TEMPLATE.format(prompt = msg))
-        return response
+            fname = extract_filenames(response)
+        return { 
+            "text": response,
+            "image": fname
+        }
     else:
         raise HTTPException(status_code=403, detail="Unauthorized action")
     
