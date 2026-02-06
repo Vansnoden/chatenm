@@ -63,7 +63,7 @@ os.environ["GOOGLE_API_KEY"] = random.choice(google_api_keys)
 
 
 
-llm = init_chat_model("google_genai:gemini-2.0-flash")
+llm = init_chat_model("google_genai:gemini-2.5-flash")
 
 
 # Modeling utils
