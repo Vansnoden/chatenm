@@ -1,0 +1,24 @@
+20260209_050754 - Step 1: Downloading environmental data
+  Downloading bioclimatic data...
+    Downloaded bioclim files: 20 files
+  Downloading elevation data...
+    Downloaded elevation data
+  Downloading LULC data...
+    WARNING: LULC download failed: An error occurred: No data found in bounds.
+    Continuing without LULC data...
+
+20260209_050754 - Step 2: Downloading occurrence data
+  Downloaded 600 records
+
+20260209_050754 - Step 3: Extracting environmental values
+  Extracted environmental values to: ./data/outputs/Apis_mellifera_with_env.csv
+
+20260209_050754 - Step 4: Analyzing predictor collinearity
+  Collinearity analysis complete
+
+20260209_050754 - Step 5: Running ecological niche model
+  Model failed: MaxentModel.__init__() got an unexpected keyword argument 'categorical_features'
+
+============================================================
+WORKFLOW COMPLETE
+============================================================

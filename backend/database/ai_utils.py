@@ -1,5 +1,4 @@
 import json
-import random
 import shutil
 from typing import Annotated
 import uuid
@@ -8,17 +7,23 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 import os
 from langchain.chat_models import init_chat_model
+# from IPython.display import Image, display
+import getpass
 from langchain_tavily import TavilySearch
 from langchain_tavily import TavilySearch
+from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 import numpy as np
 import rasterio
+from rasterio.plot import show
 import matplotlib.pyplot as plt
 import requests
 import zipfile
+import tempfile
 from typing import List
 from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
 import numpy as np
 import rasterio
 import matplotlib.pyplot as plt
@@ -27,9 +32,11 @@ import pandas as pd
 import geopandas as gpd
 import pandas as pd
 import elapid as ela
-import os, zipfile, requests
+import os, zipfile, requests, io
 from typing import Dict, Any
+import rasterio.mask
 from shapely.geometry import mapping
+from sklearn.metrics import roc_auc_score
 import os
 import glob
 import numpy as np
@@ -43,7 +50,20 @@ import geopandas as gpd
 import numpy as np
 from shapely.geometry import Point
 from typing import Dict, Any, Optional
+import geodatasets
+import pystac_client
+import planetary_computer
+import rioxarray
+from typing import Optional
+import seaborn as sns
+from shapely.geometry import Point
+from typing import Dict, Any, Optional
+import ee
+import geemap
+import os
+import time
 from dotenv import load_dotenv
+import random
 
 load_dotenv() 
 
@@ -63,7 +83,7 @@ os.environ["GOOGLE_API_KEY"] = random.choice(google_api_keys)
 
 
 
-llm = init_chat_model("google_genai:gemini-2.0-flash")
+llm = init_chat_model("google_genai:gemini-2.5-flash")
 
 
 # Modeling utils
@@ -582,16 +602,17 @@ def run_suitability_model(temp_rast_path: str, output_path: str) -> str:
 
 
 # niche modeling tool
+
 @tool
 def run_ecological_niche_model(
         species_name: str,
         occurrence_data_path: str,
         environmental_data_path: str,
         output_raster_path: str,
-        study_area: List[str] ,
         bio_predictors: List[int] = [1,2,3],
         elevation: bool = True,
-        resolution: str = "10m"
+        resolution: str = "10m",
+        study_area: List[str] = ['Kenya']
     ) -> str:
     """
     Trains a Maxent ecological niche model and applies it to environmental rasters
@@ -606,11 +627,10 @@ def run_ecological_niche_model(
         bio_predictors: List of Bioclim variable id to include, a number between 1 and 19.
         elevation: boolean to specify if we should include or not elevation in the modeling.
         resolution (str): Spatial resolution ("10m", "5m", "2.5m", "30s").
-        study_area: List of countries names if the format ['Uganda', 'Ethiopia']
+        study_area: List of countries names ['Cameroon', 'Kenya'] for instance
     Returns:
-        Path to the output, and Unique png name as a dictionnary
+        Path to the output
     """
-
     # -----------------------------
     # Load occurrence/background data
     # -----------------------------
@@ -660,28 +680,18 @@ def run_ecological_niche_model(
     occurrence_points = occurrence_data[predictors]
     background_points = background_data[predictors]
 
-    # print("### OCCURRENCE POINTS ###")
-    print(occurrence_points)
-
-    # print("### BACKGROUND POINTS ###")
-    print(background_points)
-
     X = pd.concat([occurrence_points, background_points], ignore_index=True)
     y = pd.Series([1] * len(occurrence_points) + [0] * len(background_points))
 
     # -----------------------------
     # Handle NaNs in predictors
     # -----------------------------
-    # print(f"Initial training set size: {X.shape}")
-
     mask = ~X.isna().any(axis=1)
     X_clean = X[mask]
     y_clean = y[mask]
-    # print(f"After dropping NaNs: {X_clean.shape}")
 
     if X_clean.empty:
         from sklearn.impute import SimpleImputer
-        # print("⚠️ All training rows had NaNs. Falling back to imputation...")
         imputer = SimpleImputer(strategy="mean")
         X_clean = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
         y_clean = y
@@ -699,35 +709,1069 @@ def run_ecological_niche_model(
     # Apply model to rasters
     # -----------------------------
     rasters = [os.path.join(clipped_data_folder, f"wc2.1_{p}.tif") for p in predictors]
-    if os.path.exists(os.path.dirname(output_raster_path)) and os.path.isdir(os.path.dirname(output_raster_path)):
-        shutil.rmtree(os.path.dirname(output_raster_path))
     os.makedirs(os.path.dirname(output_raster_path), exist_ok=True)
     ela.apply_model_to_rasters(maxent_model, rasters, output_raster_path)
 
     # -----------------------------
-    # Plot result
+    # Read raster data for plotting
     # -----------------------------
     with rasterio.open(output_raster_path) as src:
         raster_data = src.read(1).astype(float)
         raster_data[raster_data == src.nodata] = np.nan  # mask NoData
 
-    height, width = raster_data.shape
-    aspect = width / height
-    fig_height = 8  # base size
-    fig_width = fig_height * aspect
-
-    # Plot
-    plt.figure(figsize=(fig_width, fig_height))
-    im = plt.imshow(raster_data, cmap="viridis", aspect="auto")
+    # Plot result
+    plt.figure(figsize=(8, 6))
+    im = plt.imshow(raster_data, cmap="viridis")
     plt.colorbar(im, fraction=0.046, pad=0.04, label="Suitability")
     plt.title(f"Ecological Niche Model - {species_name}")
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")
+
     unique_name = f"{uuid.uuid4().hex}"
     plt.savefig(os.path.join("uploads", unique_name), dpi=300)
     shutil.copy(output_raster_path, f"uploads/{unique_name}.tif")
 
     return {"path": output_raster_path, "file_name": unique_name + ".png"}
+
+
+
+@tool
+def get_lulc_data(
+    bbox: list[float], 
+    year: int = 2023, 
+    output_path: str = "lulc_data.tif"
+) -> str:
+    """
+    Downloads Land Use Land Cover (LULC) data for a specific area and year 
+    using the Esri 10m Annual LULC dataset via Microsoft Planetary Computer.
+    
+    Args:
+        bbox: A list of 4 floats representing the bounding box [min_lon, min_lat, max_lon, max_lat].
+        year: The year of the data (available 2017-2023).
+        output_path: The filename to save the resulting GeoTIFF.
+    """
+    try:
+        # Initialize the STAC API client
+        catalog = pystac_client.Client.open(
+            "https://planetarycomputer.microsoft.com/api/stac/v1",
+            ignore_conformance=True,
+        )
+
+        # Search for the LULC collection
+        search = catalog.search(
+            collections=["io-lulc-annual-v02"],
+            bbox=bbox,
+            datetime=str(year),
+        )
+
+        items = list(search.get_items())
+        if not items:
+            return f"No LULC data found for the year {year} in this region."
+
+        # Sign the asset to get a temporary access token
+        selected_item = items[0]
+        signed_item = planetary_computer.sign(selected_item)
+        asset_url = signed_item.assets["data"].href
+
+        # Load and clip the data to the user's specific bounding box
+        data = rioxarray.open_rasterio(asset_url)
+        clipped_data = data.rio.clip_box(*bbox)
+
+        # Save to local file
+        clipped_data.rio.to_raster(output_path)
+
+        return f"Successfully downloaded LULC data for {year} to {output_path}."
+
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+
+
+@tool
+def get_bounding_box_for_country(
+    country_name: str, 
+) -> str:
+    """
+    Get bounding box for a given country, returns bbox
+    """
+    
+    world = gpd.read_file('/home/void/Documents/research/climate_modeling/data/world-administrative-boundaries.geojson')
+    country_gdf = world[world['name'] == country_name]
+    if country_gdf.empty:
+        return f"Country '{country_name}' not found."
+    bbox = list(country_gdf.total_bounds) 
+    return bbox
+
+
+@tool
+def extract_environmental_values(
+    occurrence_csv_path: str,
+    environmental_folder: str,
+    study_area: List[str],
+    predictors: List[str],
+    resolution: str = "10m",
+    output_csv_path: Optional[str] = None
+) -> str:
+    """
+    Extract environmental values from raster files to occurrence points.
+    This must be done BEFORE collinearity analysis and modeling.
+    
+    Args:
+        occurrence_csv_path: Path to occurrence CSV file
+        environmental_folder: Path to environmental raster folder
+        study_area: List of country names for clipping
+        predictors: List of predictor names (e.g., ['bio_1', 'bio_2', 'elev'])
+        resolution: Resolution string (e.g., '10m')
+        output_csv_path: Optional output path (default adds '_with_env' suffix)
+    
+    Returns:
+        Path to CSV with environmental values extracted
+    """
+    import warnings
+    warnings.filterwarnings('ignore')
+    
+    # Load occurrence data
+    df_occ = pd.read_csv(occurrence_csv_path)
+    df_occ = df_occ.dropna(subset=["lon", "lat"])
+    
+    if "presence" not in df_occ.columns:
+        return "Error: CSV must have 'presence' column (1 for presence, 0 for background)"
+    
+    # Define study area and clip rasters
+    print(f"Defining study area for: {study_area}")
+    define_study_area(countries=study_area, output_path="./data/study_area.geojson")
+    
+    clipped_folder = "./data/clipped"
+    print(f"Clipping rasters to study area...")
+    clip_rasters_to_study_area(
+        input_folder=environmental_folder,
+        output_folder=clipped_folder,
+        mask_path="./data/study_area.geojson"
+    )
+    
+    # Prepare coordinates for extraction
+    coordinates = list(zip(df_occ["lon"], df_occ["lat"]))
+    
+    # Extract values for each predictor
+    print(f"Extracting values for {len(predictors)} predictors...")
+    
+    for predictor in predictors:
+        # Find the matching raster file
+        raster_file = None
+        for file in os.listdir(clipped_folder):
+            if file.endswith(".tif"):
+                # Handle different naming patterns
+                if predictor in file or f"wc2.1_{resolution}_{predictor}" in file:
+                    raster_file = os.path.join(clipped_folder, file)
+                    break
+        
+        if not raster_file:
+            print(f"Warning: Could not find raster for predictor: {predictor}")
+            df_occ[predictor] = np.nan
+            continue
+        
+        try:
+            # Extract values
+            values = fast_extract_pixel_values(raster_file, 1, coordinates)
+            df_occ[predictor] = values
+            print(f"  ✓ Extracted: {predictor}")
+        except Exception as e:
+            print(f"  ✗ Error extracting {predictor}: {str(e)}")
+            df_occ[predictor] = np.nan
+    
+    # Save to CSV
+    if output_csv_path is None:
+        base, ext = os.path.splitext(occurrence_csv_path)
+        output_csv_path = f"{base}_with_env{ext}"
+    
+    df_occ.to_csv(output_csv_path, index=False)
+    print(f"\nSaved extracted data to: {output_csv_path}")
+    print(f"Rows: {len(df_occ)}, Presence: {(df_occ['presence'] == 1).sum()}, Absence: {(df_occ['presence'] == 0).sum()}")
+    
+    return output_csv_path
+
+
+@tool
+def analyze_predictor_colinearity(
+    occurrence_data_path: str, 
+    predictors: List[str],
+    threshold: float = 0.8,
+    output_plot_path: Optional[str] = None
+) -> str:
+    """
+    Analyzes and plots colinearity (Correlation Matrix) for the selected predictors.
+    Run this AFTER extracting environmental values to occurrence points.
+    
+    Args:
+        occurrence_data_path: Path to CSV with environmental values already extracted
+        predictors: List of predictor names to analyze
+        threshold: Correlation threshold above which variables are considered highly correlated
+    
+    Returns:
+        Analysis results with recommendations
+    """
+    
+    # Load data
+    df = pd.read_csv(occurrence_data_path)
+    
+    # Check if predictors exist in the data
+    available_predictors = [p for p in predictors if p in df.columns]
+    missing = [p for p in predictors if p not in df.columns]
+    
+    if missing:
+        return f"Error: These predictors are missing from the data: {missing}. Run extraction first."
+    
+    if len(available_predictors) < 2:
+        return "Need at least 2 predictors for collinearity analysis."
+    
+    # Filter to only presence points for better analysis
+    df_presence = df[df["presence"] == 1]
+    if len(df_presence) < 10:
+        print("Warning: Few presence points (<10), using all data including background.")
+        df_analysis = df
+    else:
+        df_analysis = df_presence
+    
+    # Calculate correlation matrix
+    corr_matrix = df_analysis[available_predictors].corr()
+    
+    # Identify highly correlated pairs
+    high_corr_pairs = []
+    recommendations = []
+    
+    for i in range(len(corr_matrix.columns)):
+        for j in range(i + 1, len(corr_matrix.columns)):
+            corr_value = abs(corr_matrix.iloc[i, j])
+            if corr_value > threshold:
+                var1 = corr_matrix.columns[i]
+                var2 = corr_matrix.columns[j]
+                high_corr_pairs.append((var1, var2, corr_value))
+                
+                # Suggest which one to keep based on correlation with other variables
+                # (simple heuristic: keep the one with lower average correlation with others)
+                avg_corr_1 = abs(corr_matrix[var1]).mean()
+                avg_corr_2 = abs(corr_matrix[var2]).mean()
+                
+                if avg_corr_1 <= avg_corr_2:
+                    recommendations.append(f"Keep '{var1}' (avg corr: {avg_corr_1:.3f}), remove '{var2}' (r = {corr_value:.3f})")
+                else:
+                    recommendations.append(f"Keep '{var2}' (avg corr: {avg_corr_2:.3f}), remove '{var1}' (r = {corr_value:.3f})")
+    
+    # # Plot
+    # plt.figure(figsize=(max(8, len(predictors)), max(6, len(predictors) * 0.8)))
+    # mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+    # sns.heatmap(
+    #     corr_matrix, 
+    #     annot=True, 
+    #     cmap='coolwarm', 
+    #     fmt=".2f",
+    #     mask=mask,
+    #     center=0,
+    #     square=True,
+    #     linewidths=0.5,
+    #     cbar_kws={"shrink": 0.8}
+    # )
+    # plt.title(f"Predictor Correlation Matrix (Threshold: {threshold})")
+    # plt.tight_layout()
+    # plt.show()
+
+    # Plot
+    plt.figure(figsize=(max(8, len(predictors)), max(6, len(predictors) * 0.8)))
+    mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+    sns.heatmap(
+        corr_matrix, 
+        annot=True, 
+        cmap='coolwarm', 
+        fmt=".2f",
+        mask=mask,
+        center=0,
+        square=True,
+        linewidths=0.5,
+        cbar_kws={"shrink": 0.8}
+    )
+    plt.title(f"Predictor Correlation Matrix (Threshold: {threshold})")
+    plt.tight_layout()
+
+    # Save if output path provided
+    print(f"#### OUTPUT PLOT PATH: {output_plot_path}")
+    if output_plot_path:
+        plt.savefig(output_plot_path, dpi=150, bbox_inches='tight')
+        print(f"Saved collinearity heatmap to {output_plot_path}")
+    else:
+        unique_name = f"{uuid.uuid4().hex}.png"
+        plt.savefig(f"./data/outputs/colinearity_analysis_{unique_name}", dpi=300, bbox_inches='tight')
+        import shutil
+        shutil.copy2(f"./data/outputs/colinearity_analysis_{unique_name}", "./uploads")
+        print(f"Saved collinearity heatmap to {output_plot_path}")
+        
+
+    # plt.show()
+    # plt.close()
+    
+    # Prepare summary message
+    summary = []
+    summary.append("=" * 60)
+    summary.append("COLLINEARITY ANALYSIS RESULTS")
+    summary.append("=" * 60)
+    summary.append(f"Data points analyzed: {len(df_analysis)} ({len(df_presence)} presence)")
+    summary.append(f"Predictors analyzed: {len(available_predictors)}")
+    summary.append("")
+    
+    if high_corr_pairs:
+        summary.append(f"FOUND {len(high_corr_pairs)} HIGHLY CORRELATED PAIRS (r > {threshold}):")
+        summary.append("-" * 40)
+        for var1, var2, corr in high_corr_pairs:
+            summary.append(f"  {var1} ↔ {var2}: r = {corr:.3f}")
+        
+        summary.append("")
+        summary.append("RECOMMENDATIONS:")
+        summary.append("-" * 40)
+        for rec in recommendations[:5]:  # Show top 5 recommendations
+            summary.append(f"  • {rec}")
+        
+        if len(recommendations) > 5:
+            summary.append(f"  ... and {len(recommendations) - 5} more")
+        
+        summary.append("")
+        summary.append("SUGGESTED WORKFLOW:")
+        summary.append("1. Remove one variable from each highly correlated pair")
+        summary.append("2. Re-run collinearity analysis with remaining variables")
+        summary.append("3. Proceed to modeling with non-correlated predictors")
+    else:
+        summary.append(f"✓ No highly correlated pairs found (all r ≤ {threshold})")
+        summary.append("✓ You can proceed with all predictors in your model")
+    
+    summary.append("=" * 60)
+    
+    return "\n".join(summary)
+
+
+
+@tool
+def download_lulc_stable(query: str, year: int = 2021, scale: int = 10, output_path: str = "lulc.tif") -> str:
+    """
+    Downloads 10m LULC data for 2021. 
+    Handles local downloads and switches to Drive for large areas automatically.
+    """
+    try:
+        # 1. Initialize
+        ee.Initialize(project="gen-lang-client-0359288668")
+        
+        # 2. Robust Region Search
+        # Uses stringContains for flexibility (Addis Ababa vs Addis Ababa City)
+        roi = ee.FeatureCollection("FAO/GAUL/2015/level1").filter(
+            ee.Filter.stringContains('ADM1_NAME', query)
+        )
+        if roi.size().getInfo() == 0:
+            roi = ee.FeatureCollection("FAO/GAUL/2015/level0").filter(
+                ee.Filter.stringContains('ADM0_NAME', query)
+            )
+        
+        if roi.size().getInfo() == 0:
+            return f"Error: Could not find boundary for '{query}'"
+
+        # 3. Load Data (ESA WorldCover 10m v200 for 2021)
+        img = ee.Image("ESA/WorldCover/v200/2021").clip(roi)
+        region = roi.geometry().bounds()
+        region_coords = region.getInfo()['coordinates']
+        
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        # 4. Hybrid Export Logic
+        try:
+            print(f"Attempting direct download for {query} at {scale}m...")
+            # Using download_ee_image which is more stable for local GeoTIFFs
+            geemap.download_ee_image(
+                image=img,
+                filename=output_path,
+                region=region_coords,
+                scale=scale,
+                crs="EPSG:4326"
+            )
+            return f"Successfully saved locally: {output_path}"
+        
+        except Exception as e:
+            # If local download fails (usually due to 10m res over a city being too big)
+            print("Local download limit hit. Switching to Google Drive Batch Export...")
+            
+            task_name = f"LULC_{query.replace(' ', '_')}_{year}"
+            task = ee.batch.Export.image.toDrive(
+                image=img,
+                description=task_name,
+                folder='GEE_LULC_Data',
+                fileNamePrefix=os.path.basename(output_path).replace('.tif', ''),
+                scale=scale,
+                region=region,
+                maxPixels=1e13 # Support for up to 10 trillion pixels
+            )
+            task.start()
+            
+            # Monitoring loop
+            while task.active():
+                print(f"Task status: {task.status()['state']}... (waiting 30s)")
+                time.sleep(30)
+            
+            if task.status()['state'] == 'COMPLETED':
+                return f"Region too large for direct download. File exported to Google Drive folder 'GEE_LULC_Data' as {task_name}.tif"
+            else:
+                return f"Drive Export failed: {task.status()['error_message']}"
+
+    except Exception as e:
+        return f"Tool Error: {str(e)}"
+    
+
+
+@tool
+def download_lulc_unified(
+    country_name: str,
+    year: int = 2021,
+    output_dir: str = "./data/environmental",
+    method: str = "auto"
+) -> str:
+    """
+    Download Land Use Land Cover data using multiple possible sources.
+    
+    Args:
+        country_name: Name of the country (e.g., 'Kenya')
+        year: Year of LULC data (2017-2023 for Planetary Computer)
+        output_dir: Directory to save the LULC raster
+        method: 'planetary' (Microsoft Planetary Computer), 'gee' (Google Earth Engine), or 'auto'
+    
+    Returns:
+        Path to downloaded LULC raster or error message
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Get bounding box
+    try:
+        bbox = get_bounding_box_for_country(country_name)
+        if isinstance(bbox, str) and "not found" in bbox:
+            return f"Error: {bbox}"
+    except Exception as e:
+        return f"Error getting bounding box: {str(e)}"
+    
+    # Prepare output path
+    output_path = os.path.join(output_dir, f"lulc_data.tif")
+    
+    # Method 1: Try Planetary Computer first (most reliable)
+    if method in ["auto", "planetary"]:
+        try:
+            print("Attempting Planetary Computer download...")
+            result = get_lulc_data(bbox, year, output_path)
+            
+            if "Successfully" in result or "tif" in result:
+                print("✓ Planetary Computer download successful")
+                return f"LULC downloaded from Planetary Computer: {output_path}"
+            else:
+                print(f"Planetary Computer returned: {result}")
+        except Exception as e:
+            print(f"Planetary Computer error: {str(e)}")
+    
+    # Method 2: Try Google Earth Engine (if configured)
+    if method in ["auto", "gee"]:
+        try:
+            print("Attempting Google Earth Engine download...")
+            # Note: This requires proper GEE setup
+            result = download_lulc_stable(
+                query=country_name,
+                year=year,
+                output_path=output_path
+            )
+            
+            if "Successfully" in result or "saved" in result or "Drive" in result:
+                print("✓ Google Earth Engine download initiated")
+                return result
+            else:
+                print(f"Google Earth Engine returned: {result}")
+        except Exception as e:
+            print(f"Google Earth Engine error: {str(e)}")
+    
+    # Method 3: Falong tongue pmvllback - use existing LULC data if available
+    potential_files = [
+        os.path.join(output_dir, "lulc.tif"),
+        os.path.join(output_dir, "lulc_data.tif"),
+        os.path.join("./data", "lulc.tif")
+    ]
+    
+    for file_path in potential_files:
+        if os.path.exists(file_path):
+            print(f"✓ Using existing LULC file: {file_path}")
+            # Copy to expected location
+            import shutil
+            shutil.copy2(file_path, output_path)
+            return f"Using existing LULC file: {output_path}"
+    
+    return "Error: Could not download LULC data. Please check:\n" \
+           "1. Internet connection\n" \
+           "2. API keys for Planetary Computer or Google Earth Engine\n" \
+           "3. Or provide your own LULC data in ./data/environmental/lulc_data.tif"
+
+
+
+@tool
+def complete_modeling_workflow_with_lulc(
+    species: str = "Apis mellifera",
+    country: str = "Kenya",
+    include_lulc: bool = True,
+    lulc_year: int = 2021,
+    n_occurrences: int = 300,
+    output_dir: str = "./data/outputs"
+) -> Dict[str, Any]:
+    """
+    Complete workflow from data download to modeling with proper LULC integration.
+    """
+    import time
+    from datetime import datetime
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    steps_log = []
+    results = {}
+    
+    try:
+        # Step 1: Download environmental data
+        steps_log.append(f"{timestamp} - Step 1: Downloading environmental data")
+        
+        # Bioclimatic data
+        bioclim_result = download_worldclim_temp(
+            period="bioclim",
+            resolution="10m",
+            out_dir="./data/environmental"
+        )
+        steps_log.append(f"  Downloaded {len(bioclim_result)} bioclim files")
+        
+        # Elevation data
+        elev_result = download_worldclim_temp(
+            period="elevation",
+            resolution="10m",
+            out_dir="./data/environmental"
+        )
+        steps_log.append(f"  Downloaded elevation data")
+        
+        # LULC data (if requested)
+        if include_lulc:
+            lulc_result = download_lulc_for_modeling(
+                country_name=country,
+                resolution="10m",
+                year=lulc_year,
+                output_dir="./data/environmental",
+                method="planetary"
+            )
+            steps_log.append(f"  Downloaded LULC data: {lulc_result}")
+        else:
+            lulc_result = None
+            steps_log.append("  Skipping LULC download")
+        
+        # Step 2: Download occurrence data
+        steps_log.append(f"\n{timestamp} - Step 2: Downloading occurrence data")
+        gbif_result = download_gbif_occurrences(
+            species=species,
+            country=country[:2].upper() if len(country) > 2 else country,
+            limit=n_occurrences,
+            output_dir="./data/gbif_data"
+        )
+        steps_log.append(f"  Downloaded {gbif_result['records']} records")
+        results["gbif_data"] = gbif_result["csv_path"]
+        
+        # Step 3: Extract environmental values
+        steps_log.append(f"\n{timestamp} - Step 3: Extracting environmental values")
+        
+        # Define predictors based on what was downloaded
+        bio_predictors = list(range(1, 20))  # All bioclim variables
+        
+        extracted_csv = extract_environmental_values(
+            occurrence_csv_path=gbif_result["csv_path"],
+            environmental_folder="./data/environmental",
+            study_area=[country],
+            predictors=[f"10m_bio_{i}" for i in bio_predictors] + 
+                      ["10m_elev"] + 
+                      (["10m_lulc"] if include_lulc else []),
+            resolution="10m",
+            output_csv_path=os.path.join(output_dir, f"{species.replace(' ', '_')}_with_env.csv")
+        )
+        steps_log.append(f"  Extracted environmental values to: {extracted_csv}")
+        results["extracted_data"] = extracted_csv
+        
+        # Step 4: Analyze collinearity
+        steps_log.append(f"\n{timestamp} - Step 4: Analyzing predictor collinearity")
+
+        collinearity_plot_path = extracted_csv.replace('.csv', '_collinearity.png')
+
+        predictors_for_collinearity = [f"10m_bio_{i}" for i in bio_predictors] + ["10m_elev"]
+        if include_lulc:
+            predictors_for_collinearity.append("10m_lulc")
+    
+        collinearity_result = analyze_predictor_colinearity.invoke({
+            "occurrence_data_path": extracted_csv,
+            "predictors": predictors,
+            "threshold": 0.8,
+            "output_plot_path": collinearity_plot_path   # new argument
+        })
+        steps_log.append("  Collinearity analysis complete")
+        results["collinearity_plot"] = collinearity_plot_path
+        
+        # Step 5: Run ecological niche model with LULC
+        steps_log.append(f"\n{timestamp} - Step 5: Running ecological niche model")
+        
+        model_output = os.path.join(output_dir, f"{species.replace(' ', '_')}_suitability.tif")
+        
+        model_results = run_ecological_niche_model_with_lulc(
+            species_name=species,
+            occurrence_data_path=extracted_csv,
+            environmental_data_path="./data/environmental",
+            output_raster_path=model_output,
+            bio_predictors=bio_predictors,
+            include_elevation=True,
+            include_lulc=include_lulc,
+            resolution="10m",
+            study_area=[country]
+        )
+
+        if isinstance(model_results, str) and os.path.exists(model_results):
+            steps_log.append(f"  Model successful: {model_output}")
+            results["model_output"] = model_output
+            # The PNG was already saved inside run_ecological_niche_model
+            model_png = model_output.replace('.tif', '.png')
+            results["model_plot"] = model_png if os.path.exists(model_png) else None
+        else:
+            steps_log.append(f"  Model returned: {model_results}")
+            results["model_result"] = model_results
+        
+        if "error" in model_results:
+            steps_log.append(f"  Model failed: {model_results['error']}")
+            results["error"] = model_results["error"]
+        else:
+            steps_log.append(f"  Model successful: {model_output}")
+            results.update(model_results)
+        
+        # Final summary
+        steps_log.append(f"\n{'='*60}")
+        steps_log.append("WORKFLOW COMPLETE")
+        steps_log.append(f"{'='*60}")
+        
+        results["success"] = "error" not in results
+        results["log"] = steps_log
+        results["timestamp"] = timestamp
+        
+        # Save workflow log
+        log_file = os.path.join(output_dir, f"workflow_log_{timestamp}.txt")
+        with open(log_file, 'w') as f:
+            f.write("\n".join(steps_log))
+        
+        results["log_file"] = log_file
+        
+    except Exception as e:
+        steps_log.append(f"\nERROR: {str(e)}")
+        import traceback
+        steps_log.append(f"Traceback: {traceback.format_exc()}")
+        
+        results = {
+            "success": False,
+            "error": str(e),
+            "log": steps_log,
+            "timestamp": timestamp
+        }
+    
+    return results
+
+
+
+@tool
+def execute_modeling_workflow(
+    species: str = "Apis mellifera",
+    country: str = "Kenya",
+    predictors: List[str] = None,
+    n_occurrences: int = 300
+) -> str:
+    """
+    Execute the complete ecological niche modeling workflow.
+    
+    Args:
+        species: Species scientific name
+        country: Country name
+        predictors: List of predictors to use (if None, uses defaults)
+        n_occurrences: Number of occurrence records to download
+    
+    Returns:
+        Summary of workflow execution
+    """
+    import time
+    
+    if predictors is None:
+        predictors = ["bio_1", "bio_2", "bio_3", "bio_4", "bio_5", 
+                     "bio_6", "bio_7", "bio_8", "bio_9", "bio_10",
+                     "bio_11", "bio_12", "bio_13", "bio_14", "bio_15",
+                     "bio_16", "bio_17", "bio_18", "bio_19", "elev"]
+    
+    steps = []
+    
+    try:
+        # Step 1: Download environmental data - FIXED
+        steps.append("Step 1: Downloading WorldClim bioclimatic data...")
+        bioclim_files = download_worldclim_temp.invoke({
+            "period": "bioclim", 
+            "resolution": "10m", 
+            "out_dir": "./data/environmental"
+        })
+        steps.append(f"  ✓ Downloaded bioclim files")
+        
+        time.sleep(1)  # Brief pause
+        
+        # Step 2: Download elevation - FIXED
+        steps.append("Step 2: Downloading elevation data...")
+        elev_files = download_worldclim_temp.invoke({
+            "period": "elevation",
+            "resolution": "10m",
+            "out_dir": "./data/environmental"
+        })
+        steps.append(f"  ✓ Downloaded elevation data")
+        
+        # Step 3: Download LULC - FIXED
+        steps.append("Step 3: Downloading Land Use Land Cover data...")
+        lulc_result = download_lulc_unified.invoke({
+            "country_name": country,
+            "year": 2021,
+            "output_dir": "./data/environmental",
+            "method": "planetary"
+        })
+        steps.append(f"  ✓ {lulc_result[:100]}...")
+        
+        # Step 4: Download shapefile - FIXED
+        steps.append("Step 4: Downloading shapefiles...")
+        iso3 = "KEN"  # You might want to add ISO3 lookup
+        shape_result = download_shapefile.invoke({
+            "iso3": iso3,
+            "level": 0,
+            "output_dir": "./data/shapefiles"
+        })
+        steps.append(f"  ✓ Downloaded shapefile with {shape_result['features']} features")
+        
+        # Step 5: Download GBIF data - FIXED
+        steps.append(f"Step 5: Downloading {n_occurrences} {species} occurrences...")
+        gbif_result = download_gbif_occurrences.invoke({
+            "species": species,
+            "country": "KE",  # ISO2 code
+            "limit": n_occurrences,
+            "output_dir": "./data/gbif_data"
+        })
+        steps.append(f"  ✓ Downloaded {gbif_result['records']} records ({gbif_result['presence']} presence, {gbif_result['absences']} absence)")
+        
+        # Step 6: Extract environmental values - FIXED
+        steps.append("Step 6: Extracting environmental values to occurrence points...")
+        extracted_csv = extract_environmental_values.invoke({
+            "occurrence_csv_path": gbif_result["csv_path"],
+            "environmental_folder": "./data/environmental",
+            "study_area": [country],
+            "predictors": predictors,
+            "resolution": "10m"
+        })
+        steps.append(f"  ✓ Extracted to: {extracted_csv}")
+        
+        # Step 7: Analyze collinearity - FIXED
+        steps.append("Step 7: Analyzing predictor collinearity...")
+        collinearity_result = analyze_predictor_colinearity.invoke({
+            "occurrence_data_path": extracted_csv,
+            "predictors": predictors,
+            "threshold": 0.8
+        })
+        steps.append("  ✓ Collinearity analysis complete")
+        
+        return "\n".join(steps) + "\n\n" + collinearity_result + \
+               "\n\nPlease review the collinearity results and specify which predictors to use for modeling."
+        
+    except Exception as e:
+        steps.append(f"❌ Error in workflow: {str(e)}")
+        return "\n".join(steps)
+    
+
+
+@tool
+def download_lulc_for_modeling(
+    country_name: str,
+    resolution: str = "10m",
+    year: int = 2021,
+    output_dir: str = "./data/environmental",
+    method: str = "planetary"
+) -> str:
+    """
+    Download LULC data and rename it to match WorldClim naming convention.
+    This ensures proper integration with ecological niche models.
+    
+    Args:
+        country_name: Country name (e.g., 'Kenya')
+        resolution: Resolution string matching WorldClim (e.g., '10m')
+        year: Year of LULC data
+        output_dir: Directory to save the LULC raster
+        method: 'planetary', 'gee', or 'auto' (default 'planetary')
+    
+    Returns:
+        Path to the LULC raster in WorldClim format
+    """
+    import warnings
+    warnings.filterwarnings('ignore')
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Get bounding box
+    bbox = get_bounding_box_for_country.invoke({
+        "country_name": country_name
+    })
+    if isinstance(bbox, str):
+        return f"Error: {bbox}"
+    
+    # Determine final output path
+    lulc_worldclim_name = f"wc2.1_{resolution}_lulc.tif"
+    final_output = os.path.join(output_dir, lulc_worldclim_name)
+    
+    if method == "planetary":
+        # Try Planetary Computer directly
+        result = get_lulc_data.invoke({
+            "bbox": bbox,
+            "year": year,
+            "output_path": final_output
+        })
+        if "Error" not in result and "failed" not in result.lower():
+            # Already saved with the correct name, just verify
+            pass
+        else:
+            return f"LULC download failed: {result}"
+    elif method == "gee":
+        # Try Google Earth Engine directly
+        result = download_lulc_stable.invoke({
+            "query": country_name,
+            "year": year,
+            "scale": 10,
+            "output_path": final_output
+        })
+        if "Error" not in result and "failed" not in result.lower():
+            pass
+        else:
+            return f"LULC download failed: {result}"
+    elif method == "auto":
+        # Use unified downloader which has fallback logic
+        result = download_lulc_unified.invoke({
+            "country_name": country_name,
+            "year": year,
+            "output_dir": output_dir,
+            "method": "auto"
+        })
+        # The unified downloader returns a message that may contain the final path.
+        # We need to extract the actual file path.
+        if "Error" in result or "failed" in result.lower():
+            return f"LULC download failed: {result}"
+        # Try to find the path in the message (e.g., "LULC downloaded from Planetary Computer: ./data/environmental/lulc_data.tif")
+        import re
+        match = re.search(r'(\./[^\s]+\.tif)', result)
+        if match:
+            temp_path = match.group(1)
+            import shutil
+            shutil.copy2(temp_path, final_output)
+        else:
+            return f"Could not locate downloaded file: {result}"
+    else:
+        raise ValueError("method must be 'planetary', 'gee', or 'auto'")
+
+    # Verify the raster has proper categorical values
+    try:
+        with rasterio.open(final_output) as src:
+            data = src.read(1)
+            unique_values = np.unique(data[~np.isnan(data)])
+            
+            # Check if values are integers (categorical)
+            if not np.all(np.equal(np.mod(unique_values, 1), 0)):
+                print(f"Warning: LULC data contains non-integer values. Converting to categories...")
+                
+                # Map to integer categories
+                from sklearn.preprocessing import LabelEncoder
+                le = LabelEncoder()
+                flat_data = data[~np.isnan(data)].flatten()
+                le.fit(flat_data)
+                transformed = le.transform(flat_data).reshape(data.shape)
+                
+                # Save with integer values
+                with rasterio.open(final_output, 'w', **src.profile) as dst:
+                    dst.write(transformed.astype(np.int16), 1)
+                
+                print(f"Converted LULC to {len(le.classes_)} integer categories")
+    except Exception as e:
+        print(f"Warning: Could not verify LULC data format: {e}")
+    
+    return final_output
+
+
+
+@tool
+def complete_modeling_workflow_with_lulc(
+    species: str = "Apis mellifera",
+    country: str = "Kenya",
+    include_lulc: bool = True,
+    lulc_year: int = 2021,
+    n_occurrences: int = 300,
+    output_dir: str = "./data/outputs"
+) -> Dict[str, Any]:
+    """
+    Complete workflow from data download to modeling with proper LULC integration.
+    """
+    import time
+    from datetime import datetime
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    steps_log = []
+    results = {}
+    
+    try:
+        # Step 1: Download environmental data
+        steps_log.append(f"{timestamp} - Step 1: Downloading environmental data")
+        
+        # Bioclimatic data
+        steps_log.append("  Downloading bioclimatic data...")
+        bioclim_result = download_worldclim_temp.invoke({
+            "period": "bioclim",
+            "resolution": "10m",
+            "out_dir": "./data/environmental"
+        })
+        steps_log.append(f"    Downloaded bioclim files: {len(bioclim_result)} files")
+        
+        # Elevation data
+        steps_log.append("  Downloading elevation data...")
+        elev_result = download_worldclim_temp.invoke({
+            "period": "elevation",
+            "resolution": "10m",
+            "out_dir": "./data/environmental"
+        })
+        steps_log.append("    Downloaded elevation data")
+        
+        # LULC data (if requested)
+        if include_lulc:
+            steps_log.append("  Downloading LULC data...")
+            lulc_result = download_lulc_for_modeling.invoke({
+                "country_name": country,
+                "resolution": "10m",
+                "year": lulc_year,
+                "output_dir": "./data/environmental",
+                "method": "planetary"
+            })
+            
+            if "Error" in lulc_result or "failed" in lulc_result.lower():
+                steps_log.append(f"    WARNING: {lulc_result}")
+                steps_log.append("    Continuing without LULC data...")
+                include_lulc = False  # Disable LULC for rest of workflow
+            else:
+                steps_log.append(f"    Downloaded LULC data: {lulc_result}")
+        else:
+            steps_log.append("  Skipping LULC download")
+        
+        # Step 2: Download occurrence data
+        steps_log.append(f"\n{timestamp} - Step 2: Downloading occurrence data")
+        country_code = country[:2].upper() if len(country) > 2 else country
+        gbif_result = download_gbif_occurrences.invoke({
+            "species": species,
+            "country": country_code,
+            "limit": n_occurrences,
+            "output_dir": "./data/gbif_data"
+        })
+        steps_log.append(f"  Downloaded {gbif_result['records']} records")
+        results["gbif_data"] = gbif_result["csv_path"]
+        
+        # Step 3: Extract environmental values
+        steps_log.append(f"\n{timestamp} - Step 3: Extracting environmental values")
+        
+        # Define predictors based on what was downloaded
+        bio_predictors = list(range(1, 20))  # All bioclim variables
+        
+        predictors = [f"10m_bio_{i}" for i in bio_predictors] + ["10m_elev"]
+        if include_lulc:
+            predictors.append("10m_lulc")
+        
+        extracted_csv = extract_environmental_values.invoke({
+            "occurrence_csv_path": gbif_result["csv_path"],
+            "environmental_folder": "./data/environmental",
+            "study_area": [country],
+            "predictors": predictors,
+            "resolution": "10m",
+            "output_csv_path": os.path.join(output_dir, f"{species.replace(' ', '_')}_with_env.csv")
+        })
+        
+        if "Error" in extracted_csv:
+            raise ValueError(extracted_csv)
+            
+        steps_log.append(f"  Extracted environmental values to: {extracted_csv}")
+        results["extracted_data"] = extracted_csv
+        
+        # Step 4: Analyze collinearity
+        steps_log.append(f"\n{timestamp} - Step 4: Analyzing predictor collinearity")
+        
+        collinearity_result = analyze_predictor_colinearity.invoke({
+            "occurrence_data_path": extracted_csv,
+            "predictors": predictors,
+            "threshold": 0.8
+        })
+        steps_log.append("  Collinearity analysis complete")
+        
+        # Step 5: Run ecological niche model
+        steps_log.append(f"\n{timestamp} - Step 5: Running ecological niche model")
+        
+        model_output = os.path.join(output_dir, f"{species.replace(' ', '_')}_suitability.tif")
+        
+        # Use the updated ecological niche model function
+        try:
+            # Prepare bio_predictors list (you might want to adjust based on collinearity results)
+            # For now, use all 19 bioclim variables
+            bio_predictors = list(range(1, 20))
+            
+            model_result = run_ecological_niche_model.invoke({
+                "species_name": species,
+                "occurrence_data_path": extracted_csv,
+                "environmental_data_path": "./data/environmental",
+                "output_raster_path": model_output,
+                "bio_predictors": bio_predictors,
+                "elevation": True,
+                "resolution": "10m",
+                "study_area": [country]
+            })
+            
+            if isinstance(model_result, str) and os.path.exists(model_result):
+                steps_log.append(f"  Model successful: {model_output}")
+                results["model_output"] = model_output
+            else:
+                steps_log.append(f"  Model returned: {model_result}")
+                results["model_result"] = model_result
+                
+        except Exception as e:
+            steps_log.append(f"  Model failed: {str(e)}")
+            results["model_error"] = str(e)
+        
+        # Final summary
+        steps_log.append(f"\n{'='*60}")
+        steps_log.append("WORKFLOW COMPLETE")
+        steps_log.append(f"{'='*60}")
+        
+        results["success"] = True
+        results["log"] = steps_log
+        results["timestamp"] = timestamp
+        
+        # Save workflow log
+        log_file = os.path.join(output_dir, f"workflow_log_{timestamp}.txt")
+        with open(log_file, 'w') as f:
+            f.write("\n".join(steps_log))
+        
+        results["log_file"] = log_file
+        
+    except Exception as e:
+        steps_log.append(f"\nERROR: {str(e)}")
+        import traceback
+        steps_log.append(f"Traceback: {traceback.format_exc()}")
+        
+        results = {
+            "success": False,
+            "error": str(e),
+            "log": steps_log,
+            "timestamp": timestamp
+        }
+    
+    return results
 
 
 
@@ -741,7 +1785,7 @@ class State(TypedDict):
 graph_builder = StateGraph(State)
 
 # utilities
-# def display_graph(graph: StateGraph):
+# def display_grAIzaSyC6eg0_XUHv5NsDl8REetPzwWsfbUJaUEkaph(graph: StateGraph):
 #     try:
 #         display(Image(graph.get_graph().draw_mermaid_png()))
 #     except Exception:
@@ -752,13 +1796,25 @@ graph_builder = StateGraph(State)
 websearch_tool = TavilySearch(max_results=2)
 
 
+# tools = [
+#     websearch_tool, 
+#     download_worldclim_temp, 
+#     run_suitability_model, 
+#     run_ecological_niche_model,
+#     download_gbif_occurrences,
+#     download_shapefile
+# ]
+
 tools = [
     websearch_tool, 
-    download_worldclim_temp, 
-    run_suitability_model, 
-    run_ecological_niche_model,
+    download_worldclim_temp,
+    download_lulc_for_modeling, 
+    complete_modeling_workflow_with_lulc,
     download_gbif_occurrences,
-    download_shapefile
+    download_shapefile,
+    get_bounding_box_for_country,
+    extract_environmental_values,
+    analyze_predictor_colinearity
 ]
 
 
@@ -873,21 +1929,25 @@ def ask_question(question: str, config: dict = {"configurable": {"thread_id": "1
 
 
 if __name__ == "__main__":
-    q1 = """
-        For the following instructions, use tools outputs to get full file paths
-        save the worldclim data in ./data/environmental
-        save elevation data in ./data/environmental
-        save GBIF data in ./data/gbif_data/
-        save final results in ./data/outputs
+    # q1 = """
+    #     For the following instructions, use tools outputs to get full file paths
+    #     save the worldclim data in ./data/environmental
+    #     save elevation data in ./data/environmental
+    #     save GBIF data in ./data/gbif_data/
+    #     save final results in ./data/outputs
 
-        Download bioclim from worldclim with 10m resolution
-        Download Elevation data with 10m resolution
-        Download the Kenya shapefiles
-        Download 100 records of Anopheles gambiae occurrences in Kenya from GBIF
-        And run an ecological niche model using the downloaded elevation and occurrence data,
-        considering bioclimatic variables 1 to 5.
+    #     Download bioclim from worldclim with 10m resolution
+    #     Download Elevation data with 10m resolution
+    #     Download the Kenya shapefiles
+    #     Download 100 records of Anopheles gambiae occurrences in Kenya from GBIF
+    #     And run an ecological niche model using the downloaded elevation and occurrence data,
+    #     considering bioclimatic variables 1 to 5.
 
-        """
+    #     """
 
-    user_input = q1
-    ask_question(user_input)
+    # user_input = q1
+    # ask_question(user_input)
+
+    simple_query = """Run the complete ecological niche modeling workflow for Apis mellifera in Kenya.
+    Use the complete_modeling_workflow_with_lulc tool with default settings."""
+    ask_question(simple_query)

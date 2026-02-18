@@ -1,0 +1,23 @@
+20260217_210949 - Step 1: Downloading environmental data
+  Downloading bioclimatic data...
+    Downloaded bioclim files: 20 files
+  Downloading elevation data...
+    Downloaded elevation data
+  Downloading LULC data...
+    Downloaded LULC data: ./data/environmental/wc2.1_10m_lulc.tif
+
+20260217_210949 - Step 2: Downloading occurrence data
+  Downloaded 600 records
+
+20260217_210949 - Step 3: Extracting environmental values
+  Extracted environmental values to: ./data/outputs/Apis_mellifera_with_env.csv
+
+20260217_210949 - Step 4: Analyzing predictor collinearity
+  Collinearity analysis complete
+
+20260217_210949 - Step 5: Running ecological niche model
+  Model successful: ./data/outputs/Apis_mellifera_suitability.tif
+
+============================================================
+WORKFLOW COMPLETE
+============================================================
