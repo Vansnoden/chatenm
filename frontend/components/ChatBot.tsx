@@ -4,11 +4,12 @@ import { X } from "lucide-react";
 import { GET_IMAGE_URL, SEND_MSG_URL } from "@/app/lib/constants";
 
 export default function ChatBot(){
-    const [messages, setMessages] = useState<{ role: string; text: string; image: string }[]>([]);
+    const [messages, setMessages] = useState<{ role: string; text: string; image: string ; coll: string}[]>([]);
     const [input, setInput] = useState("");
     const [visible, setVisible] = useState(true);
     const [thinking, setThinking] = useState(false);
     const [imageUrl, setImageURL] = useState("");
+    const [collImageUrl, setCollImageURL] = useState("");
     const [tifUrl, setTifURL] = useState("");
 
 
@@ -16,7 +17,7 @@ export default function ChatBot(){
         if (!input.trim()) return;
 
         // Add user message
-        const newMessages = [...messages, { role: "user", text: input, image: "" }];
+        const newMessages = [...messages, { role: "user", text: input, image: "", coll:"" }];
         setMessages(newMessages);
         setInput("");
 
@@ -42,9 +43,14 @@ export default function ChatBot(){
             
             setMessages((prev) => [
                 ...prev,
-                { role: "assistant", text: answer.text, image: GET_IMAGE_URL + "/" + answer.image },
+                { role: "assistant", 
+                    text: answer.text, 
+                    image: GET_IMAGE_URL + "/" + answer.image,
+                    coll: GET_IMAGE_URL + "/" + answer.coll
+                },
             ]);
             setImageURL(GET_IMAGE_URL + "/" + answer.image + ".png" );
+            setCollImageURL(GET_IMAGE_URL + "/" + answer.coll + ".png" );
             setTifURL(GET_IMAGE_URL + "/" + answer.image + ".tif" );
             setThinking(false);
         } catch (error) {
@@ -64,12 +70,14 @@ export default function ChatBot(){
                             This is an Example of input, you can use it as base and customize it to your needs.
                         </b> <br/><br/>
                         <p>
-                            Download bioclim from worldclim with 10m resolution  <br/>
+                            {/* Download bioclim from worldclim with 10m resolution  <br/>
                             Download Elevation data with 10m resolution  <br/>
                             Download the Kenya shapefiles  <br/>
                             Download 100 records of Anopheles gambiae occurrences in Kenya from GBIF  <br/>
                             And run an ecological niche model using the downloaded elevation and occurrence data,  <br/>
-                            considering bioclimatic variables 1 to 19. <br/>
+                            considering bioclimatic variables 1 to 19. <br/> */}
+                            Run the complete ecological niche modeling workflow for Apis mellifera in Kenya.<br/>
+                            Use the complete_modeling_workflow_with_lulc tool with default settings.
                         </p>
                     </div>
                     <button onClick={() => setVisible(false)} 
@@ -97,6 +105,11 @@ export default function ChatBot(){
                         hover:bg-blue-700 active:bg-blue-800 
                         focus:outline-none focus:ring-2 focus:ring-blue-400 
                         transition" href={msg.image + '.tif'} target="_blank">Download TIF file</a> }
+                        { msg.coll  && <img className="chatImage" src={msg.coll + '.png'} alt="image"></img> }
+                        { msg.image  && <a className="px-4 py-2 rounded-xl bg-blue-600 text-white font-medium 
+                        hover:bg-blue-700 active:bg-blue-800 
+                        focus:outline-none focus:ring-2 focus:ring-blue-400 
+                        transition" href={msg.image + '.tif'} target="_blank">Download Colinearity analysis</a> }
                     </div>
                     ))}
                 </div>

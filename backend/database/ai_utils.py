@@ -63,6 +63,7 @@ import geemap
 import os
 import time
 from dotenv import load_dotenv
+import random
 
 load_dotenv() 
 
@@ -996,12 +997,15 @@ def analyze_predictor_colinearity(
         plt.savefig(output_plot_path, dpi=150, bbox_inches='tight')
         print(f"Saved collinearity heatmap to {output_plot_path}")
     else:
-        plt.savefig("./data/outputs/colinearity_analysis.png", dpi=300, bbox_inches='tight')
+        unique_name = f"{uuid.uuid4().hex}.png"
+        plt.savefig(f"./data/outputs/colinearity_analysis_{unique_name}", dpi=300, bbox_inches='tight')
+        import shutil
+        shutil.copy2(f"./data/outputs/colinearity_analysis_{unique_name}", "./uploads")
         print(f"Saved collinearity heatmap to {output_plot_path}")
         
 
-    plt.show()
-    plt.close()
+    # plt.show()
+    # plt.close()
     
     # Prepare summary message
     summary = []

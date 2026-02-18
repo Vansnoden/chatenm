@@ -109,14 +109,43 @@ def extract_filenames(message: str) -> Dict[str, Optional[str]]:
     }
 
 
-def get_latest_file(folder_path: str) -> str:
-    """Return the path to the most recently created/modified file in a folder."""
-    files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) 
-             if os.path.isfile(os.path.join(folder_path, f))]
+def get_latest_file(folder_path: str, starts_with: str = "", ends_with: str = "") -> str:
+    """
+    Return the path to the most recently created/modified file in a folder
+    that starts with a given prefix and ends with a given extension.
+
+    Args:
+        folder_path: Path to the folder to search.
+        starts_with: Required beginning of the filename (case-sensitive).
+        ends_with: Required ending of the filename (e.g., ".txt").
+                   If not provided, any extension is allowed.
+
+    Returns:
+        Full path to the latest matching file.
+
+    Raises:
+        FileNotFoundError: If no matching files are found.
+    """
+    # Build list of full paths for files that meet the criteria
+    files = []
+    for filename in os.listdir(folder_path):
+        full_path = os.path.join(folder_path, filename)
+        if not os.path.isfile(full_path):
+            continue
+        if starts_with and not filename.startswith(starts_with):
+            continue
+        if ends_with and not filename.endswith(ends_with):
+            continue
+        files.append(full_path)
+
     if not files:
-        raise FileNotFoundError(f"No files found in {folder_path}")
-    
-    latest_file = max(files, key=os.path.getctime)  # or os.path.getmtime for "last modified"
+        raise FileNotFoundError(
+            f"No files in {folder_path} matching "
+            f"starts_with='{starts_with}', ends_with='{ends_with}'"
+        )
+
+    # Return the file with the latest creation time (use getmtime for modification time)
+    latest_file = max(files, key=os.path.getctime)
     return latest_file
 
 
@@ -137,11 +166,14 @@ async def send_message(
             # fname = extract_filenames(response)
             # ffname = str(fname['png'].split(".")[-2]) if fname['png'] else ""
             print("LATEST FILE NAME:")
-            fname = get_latest_file("uploads").split(".tif")[0].split("/")[-1]
+            fname = get_latest_file("uploads", ends_with=".tif").split(".tif")[0].split("/")[-1]
+            cfname = get_latest_file("uploads", starts_with="colinearity_analysis", ends_with=".png").split(".png")[0].split("/")[-1]
             print(fname)
+            print(cfname)
         return { 
             "text": response,
-            "image": fname
+            "image": fname,
+            "coll": cfname
         }
     else:
         raise HTTPException(status_code=403, detail="Unauthorized action")
