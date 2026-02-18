@@ -167,7 +167,9 @@ async def send_message(
             # ffname = str(fname['png'].split(".")[-2]) if fname['png'] else ""
             print("LATEST FILE NAME:")
             fname = get_latest_file("uploads", ends_with=".tif").split(".tif")[0].split("/")[-1]
-            cfname = get_latest_file("uploads", starts_with="colinearity_analysis", ends_with=".png").split(".png")[0].split("/")[-1]
+            cfname = get_latest_file("uploads", starts_with="colinearity_analysis", ends_with=".png")
+            if cfname:
+                cfname = cfname.split(".png")[0].split("/")[-1]
             print(fname)
             print(cfname)
         return { 
