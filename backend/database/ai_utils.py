@@ -794,7 +794,7 @@ def get_bounding_box_for_country(
     Get bounding box for a given country, returns bbox
     """
     
-    world = gpd.read_file('/home/void/Documents/research/climate_modeling/data/world-administrative-boundaries.geojson')
+    world = gpd.read_file('world-administrative-boundaries.geojson')
     country_gdf = world[world['name'] == country_name]
     if country_gdf.empty:
         return f"Country '{country_name}' not found."

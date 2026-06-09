@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import ast
 import os
 import re
 from typing import Dict, Optional
@@ -163,6 +164,7 @@ async def send_message(
             new_session = crud.create_chat_session(db)
             crud.create_chat_message(db, new_session.id, 'user', msg)
             response = crud.ask_question_to_llm(db, new_session.id, MSG_TEMPLATE.format(prompt = msg))
+            print(f"RESPONSE: {type(response)} ====== DATA: {response}")
             # fname = extract_filenames(response)
             # ffname = str(fname['png'].split(".")[-2]) if fname['png'] else ""
             print("LATEST FILE NAME:")
@@ -173,6 +175,7 @@ async def send_message(
             print(fname)
             print(cfname)
         return { 
+            # "text": ast.literal_eval(response)[0]['text'],
             "text": response,
             "image": fname,
             "coll": cfname
